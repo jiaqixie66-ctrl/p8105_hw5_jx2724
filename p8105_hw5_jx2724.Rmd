@@ -7,3 +7,264 @@ output: github_document
 
 ```{r setup, include=FALSE}
 library(tidyverse)
+```
+
+# Problem 1
+
+```{r}
+birthday_check = function(n) {
+  birthdays = sample(1:365, size = n, replace = TRUE)
+  any(duplicated(birthdays))
+}
+```
+```{r}
+birthday_sim =
+  tibble(group_size = 2:50) |>
+  mutate(
+    probability = map_dbl(
+      group_size,
+      \(n) mean(replicate(10000, birthday_check(n)))
+    )
+  )
+```
+
+```{r}
+birthday_sim |>
+  ggplot(aes(x = group_size, y = probability)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    x = "Group Size",
+    y = "Probability of a Shared Birthday",
+    title = "Probability of at Least Two People Sharing a Birthday"
+  )
+```
+
+# Problem 2
+
+```{r}
+study_files =
+  list.files(
+    path = "data",
+    pattern = "\\.csv$",
+    full.names = TRUE
+  )
+
+study_files
+```
+
+```{r}
+study_data =
+  study_files |>
+  map_dfr(
+    \(file) read_csv(file, show_col_types = FALSE) |>
+      mutate(file_name = basename(file))
+  )
+
+study_data
+```
+```{r}
+study_files =
+  list.files(
+    path = "data",
+    pattern = "\\.csv$",
+    full.names = TRUE,
+    recursive = TRUE
+  )
+
+study_files
+```
+
+```{r}
+study_data =
+  study_files |>
+  map_dfr(
+    \(file) read_csv(file, show_col_types = FALSE) |>
+      mutate(file_name = basename(file))
+  )
+
+study_data
+```
+```{r}
+study_tidy =
+  study_data |>
+  mutate(
+    arm = case_when(
+      str_detect(file_name, "^con") ~ "control",
+      str_detect(file_name, "^exp") ~ "experimental"
+    ),
+    subject_id = str_extract(file_name, "\\d+")
+  ) |>
+  pivot_longer(
+    week_1:week_8,
+    names_to = "week",
+    values_to = "observation"
+  ) |>
+  mutate(
+    week = as.integer(str_remove(week, "week_"))
+  ) |>
+  select(subject_id, arm, week, observation)
+
+study_tidy
+```
+
+
+```{r}
+study_tidy |>
+  ggplot(
+    aes(
+      x = week,
+      y = observation,
+      group = subject_id,
+      color = arm
+    )
+  ) +
+  geom_line(alpha = 0.7) +
+  geom_point() +
+  labs(
+    x = "Week",
+    y = "Observation",
+    color = "Arm",
+    title = "Observations Over Time by Study Arm"
+  )
+```
+
+
+Participants in the experimental arm generally show an increasing pattern in observations over time, while observations in the control arm appear more stable. This suggests a possible difference in longitudinal trends between the two study groups.
+
+
+
+# Problem 3
+
+
+```{r}
+sim_t_test = function(mu) {
+  sample_data =
+    tibble(
+      x = rnorm(n = 30, mean = mu, sd = 5)
+    )
+
+  test_result =
+    t.test(sample_data$x, mu = 0) |>
+    broom::tidy()
+
+  tibble(
+    mu_hat = mean(sample_data$x),
+    p_value = test_result$p.value
+  )
+}
+```
+
+```{r}
+sim_results_mu0 =
+  rerun(5000, sim_t_test(mu = 0)) |>
+  bind_rows()
+
+sim_results_mu0
+```
+
+```{r}
+sim_results =
+  tibble(mu = 1:6) |>
+  mutate(
+    output = map(
+      mu,
+      \(mu_value) rerun(5000, sim_t_test(mu = mu_value)) |>
+        bind_rows()
+    )
+  ) |>
+  unnest(output)
+
+sim_results
+```
+
+
+```{r}
+power_results =
+  sim_results |>
+  mutate(
+    reject = p_value < 0.05
+  ) |>
+  group_by(mu) |>
+  summarize(
+    power = mean(reject),
+    .groups = "drop"
+  )
+
+power_results
+```
+
+```{r}
+power_results |>
+  ggplot(aes(x = mu, y = power)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    x = "True Value of Mu",
+    y = "Power",
+    title = "Power of the One-Sample t-Test"
+  )
+```
+
+```{r}
+mean_estimates =
+  sim_results |>
+  group_by(mu) |>
+  summarize(
+    mean_mu_hat = mean(mu_hat),
+    .groups = "drop"
+  )
+
+mean_estimates
+```
+
+
+
+```{r}
+mean_estimates |>
+  ggplot(aes(x = mu, y = mean_mu_hat)) +
+  geom_line() +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+  labs(
+    x = "True Value of Mu",
+    y = "Average Estimated Mu",
+    title = "Average Estimated Mu Across All Simulations"
+  )
+```
+
+```{r}
+rejected_estimates =
+  sim_results |>
+  filter(p_value < 0.05) |>
+  group_by(mu) |>
+  summarize(
+    mean_mu_hat_rejected = mean(mu_hat),
+    .groups = "drop"
+  )
+
+rejected_estimates
+```
+
+
+```{r}
+rejected_estimates |>
+  ggplot(aes(x = mu, y = mean_mu_hat_rejected)) +
+  geom_line() +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+  labs(
+    x = "True Value of Mu",
+    y = "Average Estimated Mu Among Rejected Samples",
+    title = "Average Estimated Mu Among Samples Rejecting the Null"
+  )
+```
+
+The average estimate of mu across all simulated datasets is approximately equal to the true value of mu. However, among datasets for which the null hypothesis is rejected, the average estimate can be farther from 0 than the true value, especially when the true effect is small. This occurs because samples with more extreme estimated means are more likely to produce small p-values and reject the null hypothesis.
+
+
+
+
+
+
+
