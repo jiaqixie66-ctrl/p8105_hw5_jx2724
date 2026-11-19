@@ -1,0 +1,9 @@
+---
+title: "Homework 5"
+author: "Jiaqi Xie"
+date: "2026-11-19"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
